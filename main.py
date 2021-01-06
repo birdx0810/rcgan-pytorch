@@ -11,7 +11,6 @@ import time
 # 3rd-Party Modules
 import numpy as np
 import torch
-import joblib
 from sklearn.model_selection import train_test_split
 
 # Self-Written Modules
@@ -20,8 +19,8 @@ from metrics.metric_utils import (
     feature_prediction, one_step_ahead_prediction, reidentify_score
 )
 
-from models.rcgan.rcgan import RCGAN
-from models.rcgan.utils import rcgan_trainer, rcgan_generator
+from models.rcgan import RCGAN
+from models.utils import rcgan_trainer, rcgan_generator
 
 def main(args):
     ##############################################
@@ -96,6 +95,7 @@ def main(args):
 
     args.feature_dim = X.shape[-1]
     args.Z_dim = X.shape[-1]
+    args.C_dim = None
 
     # Train-Test Split data and time
     train_data, test_data, train_time, test_time = train_test_split(
@@ -109,10 +109,10 @@ def main(args):
     # Log start time
     start = time.time()
 
-    model = TimeGAN(args)
+    model = RCGAN(args)
     if args.is_train == True:
-        timegan_trainer(model, train_data, train_time, model_dir, args)
-    generated_data = timegan_generator(model, train_time, model_dir, args)
+        rcgan_trainer(model, train_data, train_time, args)
+    generated_data = rcgan_generator(model, train_time, args)
     generated_time = train_time
 
     # Log end time
@@ -255,6 +255,14 @@ if __name__ == "__main__":
     parser.add_argument(
         '--batch_size',
         default=128,
+        type=int)
+    parser.add_argument(
+        '--d_iters',
+        default=1,
+        type=int)
+    parser.add_argument(
+        '--g_iters',
+        default=1,
         type=int)
     parser.add_argument(
         '--hidden_dim',

@@ -12,7 +12,7 @@ class RCGANDataset(torch.utils.data.Dataset):
         - x (torch.FloatTensor): the real value features of the data
         - t (torch.LongTensor): the temporal feature of the data 
     """
-    def __init__(self, data, label=None, time=None, padding_value=None):
+    def __init__(self, data, time=None, label=None, padding_value=None):
         # sanity check
         if len(data) != len(time):
             raise ValueError(
@@ -24,12 +24,17 @@ class RCGANDataset(torch.utils.data.Dataset):
 
         self.X = torch.FloatTensor(data)
         self.T = torch.LongTensor(time)
-        self.C = torch.FloatTensor(label)
+        if label:
+            self.C = torch.FloatTensor(label)
+        else: 
+            self.C = None
 
     def __len__(self):
         return len(self.X)
 
     def __getitem__(self, idx):
+        if self.C:
+            return self.X[idx], self.T[idx], self.C[idx]
         return self.X[idx], self.T[idx]
 
     def collate_fn(self, batch):
@@ -41,5 +46,9 @@ class RCGANDataset(torch.utils.data.Dataset):
         # The actual length of each data
         T_mb = [T for T in batch[1]]
         
+        if self.C:
+            C_mb = [C for C in batch[2]]
+            return X_mb, T_mb, C_mb
+
         return X_mb, T_mb
 

@@ -1,7 +1,12 @@
+import os
 from typing import Dict
 
 import numpy as np
 import torch
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import trange
+
+from models.dataset import RCGANDataset
 
 def sample_Z(batch_size=32, seq_length=100, latent_dim=20, use_time=False):
     """
@@ -32,32 +37,6 @@ def sample_C(batch_size=32, cond_dim=2, max_val=1, one_hot=False):
             C = np.random.choice(max_val+1, size=(batch_size, cond_dim))
         return C
 
-def generator_trainer(
-    model: torch.nn.Module, 
-    Z: torch.FloatTensor,
-    C: torch.FloatTensor, 
-    T: torch.LongTensor, 
-    opt: torch.optim.Optimizer, 
-    args: Dict, 
-    writer: Union[torch.utils.tensorboard.SummaryWriter, type(None)]=None, 
-    privacy_engine: Union[opacus.PrivacyEngine, type(None)]=None
-) -> float:
-    # TODO
-    pass
-
-def discriminator_trainer(
-    model: torch.nn.Module, 
-    X: torch.FloatTensor, 
-    C: torch.FloatTensor, 
-    T: torch.LongTensor, 
-    opt: torch.optim.Optimizer, 
-    args: Dict, 
-    writer: Union[torch.utils.tensorboard.SummaryWriter, type(None)]=None, 
-    privacy_engine: Union[opacus.PrivacyEngine, type(None)]=None
-) -> float:
-    # TODO
-    pass
-
 def rcgan_trainer(model, data, time, args):
     # Initialize TimeGAN dataset and dataloader
     dataset = RCGANDataset(data, time)
@@ -77,33 +56,44 @@ def rcgan_trainer(model, data, time, args):
     writer = SummaryWriter(os.path.join(f"tensorboard/{args.exp}"))
 
     logger = trange(
-        args.sup_epochs, 
+        args.epochs, 
         desc=f"Epoch: 0, E_loss: 0, G_loss: 0, D_loss: 0"
     )
     
     for epoch in logger:
         for X_mb, T_mb in dataloader:
+            Z_mb = torch.rand((args.batch_size, args.max_seq_len, args.Z_dim))
             # Discriminator forward pass
-            for _ in range(d_iters):
-                d_loss = discriminator_trainer(
-                    model=model, 
-                    X=X_mb, 
-                    T=T_mb, 
-                    opt=d_opt, 
-                    args=args, 
-                    writer=writer
+            for _ in range(args.d_iters):
+                model.zero_grad()
+                d_loss, _ = model(
+                    X=X_mb,
+                    Z=Z_mb,
+                    T=T_mb,
+                    CG=None,
+                    CD=None,
+                    CS=None
                 )
+                d_loss.backward()
+                d_opt.step()
             # Generator forward pass
-            for _ in range(g_iters):
-                g_loss = generator_trainer(
-                    model=model,  
-                    X=X_mb, 
-                    T=T_mb, 
-                    opt=g_opt, 
-                    args=args, 
-                    writer=writer
+            for _ in range(args.g_iters):
+                model.zero_grad()
+                _, g_loss = model(
+                    X=X_mb,
+                    Z=Z_mb,
+                    T=T_mb,
+                    CG=None,
+                    CD=None,
+                    CS=None
                 )
+                g_loss.backward()
+                g_opt.step()
 
-def rcgan_generator():
-    # TODO
-    pass
+def rcgan_generator(model, time, args):
+    Z = torch.rand((len(time), args.max_seq_len, args.Z_dim))
+
+    with torch.no_grad():
+        X_hat = model.generate(Z=Z, T=time, C=None)
+
+    return X_hat

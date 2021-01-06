@@ -12,14 +12,20 @@ class Generator(torch.nn.Module):
         self.padding_value = args.padding_value
         self.max_seq_len = args.max_seq_len
 
+        # Set input dim for model (w/ or w/o C)
+        if self.C_dim:
+            self.input_dim = self.feature_dim + self.C_dim
+        else:
+            self.input_dim = self.feature_dim
+
         # Generator Architecture
         self.gen_rnn = torch.nn.LSTM(
-            input_size=self.Z_dim+self.C_dim, 
+            input_size=self.input_dim, 
             hidden_size=self.feature_dim, 
             num_layers=self.num_layers, 
             batch_first=True
         )
-        self.gen_linear = torch.nn.Linear(self.Z_dim+self.C_dim, self.feature_dim)
+        self.gen_linear = torch.nn.Linear(self.feature_dim, self.feature_dim)
         self.gen_sigmoid = torch.nn.Sigmoid()
 
         # Init weights
@@ -52,18 +58,13 @@ class Generator(torch.nn.Module):
         Returns:
             - X_hat: feature space synthetic data (B x S x F)
         """
-        # Conditional parameters
-        _, cond_dim = C.shape
+        if C:
+            # Conditional parameters
+            _, cond_dim = C.shape
 
-        # Append conditional vector to noise vector
-        if cond_dim > 0:
+            # Append conditional vector to noise vector
             repeated_encoding = torch.stack([C]*self.max_seq_len, axis=1)
-            Z = torch.cat([Z, repeated_encoding], axis=2)
-        
-        # # Add the average of the inputs to the inputs (mode collapse?
-        # if batch_mean:
-        #     mean_over_batch = torch.stack([torch.mean(Z, axis=0)]*batch_size, axis=0)
-        #     Z = torch.cat([Z, mean_over_batch], axis=2)
+            X = torch.cat([X, repeated_encoding], axis=2)
 
         # Dynamic RNN input for ignoring paddings
         Z_packed = torch.nn.utils.rnn.pack_padded_sequence(
@@ -94,15 +95,22 @@ class Discriminator(torch.nn.Module):
     """The discriminator network for RCGAN
     """
     def __init__(self, args):
-        super(DiscriminatorNetwork, self).__init__()
+        super(Discriminator, self).__init__()
         self.feature_dim = args.feature_dim
+        self.C_dim = args.C_dim
         self.num_layers = args.num_layers
         self.padding_value = args.padding_value
         self.max_seq_len = args.max_seq_len
 
+        # Set input dim for model (w/ or w/o C)
+        if self.C_dim:
+            self.input_dim = self.feature_dim + self.C_dim
+        else:
+            self.input_dim = self.feature_dim
+
         # Discriminator Architecture
         self.dis_rnn = torch.nn.LSTM(
-            input_size=self.feature_dim, 
+            input_size=self.input_dim, 
             hidden_size=self.feature_dim, 
             num_layers=self.num_layers, 
             batch_first=True
@@ -130,7 +138,7 @@ class Discriminator(torch.nn.Module):
                 elif 'bias' in name:
                     param.data.fill_(0)
 
-    def forward(self, X, T, C):
+    def forward(self, X, T, C=None):
         """Forward pass for predicting if the data is real or synthetic
         Args:
             - X: latent representation (B x S x F)
@@ -139,11 +147,11 @@ class Discriminator(torch.nn.Module):
         Returns:
             - logits: predicted logits (B x S)
         """
-        # Conditional parameters
-        _, cond_dim = C.shape
+        if C:
+            # Conditional parameters
+            _, cond_dim = C.shape
 
-        # Append conditional vector to noise vector
-        if cond_dim > 0:
+            # Append conditional vector to noise vector
             repeated_encoding = torch.stack([C]*self.max_seq_len, axis=1)
             X = torch.cat([X, repeated_encoding], axis=2)
 
@@ -178,8 +186,8 @@ class RCGAN(torch.nn.Module):
     """
     def __init__(self, args):
         super(RCGAN, self).__init__()
-        self.generator = Generator()
-        self.discriminator = Discriminator()
+        self.generator = Generator(args)
+        self.discriminator = Discriminator(args)
         self.criterion = torch.nn.BCEWithLogitsLoss()
 
     def forward(self, X, Z, T, CG=None, CD=None, CS=None):
@@ -208,7 +216,7 @@ class RCGAN(torch.nn.Module):
 
         D_loss = D_loss_real + D_loss_fake
 
-        if C:
+        if CS:
             # Discriminator predict fake conditionals
             C_fake = discriminator(X, T, CS)
             D_loss_cond = self.criterion(C_fake, torch.zeros_like(D_real)).mean()
@@ -219,3 +227,6 @@ class RCGAN(torch.nn.Module):
 
         return D_loss, G_loss
 
+    def generate(self, Z, T, C=None):
+        X_hat = self.generator(Z, T, C)
+        return X_hat
