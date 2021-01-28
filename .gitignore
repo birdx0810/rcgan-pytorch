@@ -127,3 +127,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Self-written ignores
+tensorboard/
+data/*
+
+# Ignores to ignore
+!data/*.py

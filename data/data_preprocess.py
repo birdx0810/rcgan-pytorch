@@ -23,6 +23,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # 3rd party modules
+import joblib
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -35,6 +36,7 @@ def data_preprocess(
     padding_value: float=-1.0,
     impute_method: str="mode", 
     scaling_method: str="minmax", 
+    one_hot: bool=True
 ) -> Tuple[np.ndarray, np.ndarray, List]:
     """Load the data and preprocess into 3d numpy array.
     Preprocessing includes:
@@ -60,30 +62,30 @@ def data_preprocess(
     # Load data
     #########################
 
-    index = 'Idx'
+    index = 0
 
-    # Load csv
+    # Load serialized data (list of dict)
     print("Loading data...\n")
-    ori_data = pd.read_csv(file_name)
+    ori_data = joblib(file_name)
 
-    # Remove spurious column, so that column 0 is now 'admissionid'.
-    if ori_data.columns[0] == "Unnamed: 0":  
-        ori_data = ori_data.drop(["Unnamed: 0"], axis=1)
+    X = np.vstack([d["X"] for d in ori_data])
+    T = [d["T"] for d in ori_data]
+    Y = [d["Y"] for d in ori_data]
 
     #########################
     # Remove outliers from dataset
     #########################
     
-    no = ori_data.shape[0]
-    z_scores = stats.zscore(ori_data, axis=0, nan_policy='omit')
+    no = X.shape[0]
+    z_scores = stats.zscore(X, axis=0, nan_policy='omit')
     z_filter = np.nanmax(np.abs(z_scores), axis=1) < 3
-    ori_data = ori_data[z_filter]
-    print(f"Dropped {no - ori_data.shape[0]} rows (outliers)\n")
+    X = X[z_filter]
+    print(f"Dropped {no - X.shape[0]} rows (outliers)\n")
 
     # Parameters
-    uniq_id = np.unique(ori_data[index])
+    uniq_id = np.unique(X[index])
     no = len(uniq_id)
-    dim = len(ori_data.columns) - 1
+    dim = len(X.columns) - 1
 
     #########################
     # Impute, scale and pad data
@@ -92,19 +94,19 @@ def data_preprocess(
     # Initialize scaler
     if scaling_method == "minmax":
         scaler = MinMaxScaler()
-        scaler.fit(ori_data)
+        scaler.fit(X)
         params = [scaler.data_min_, scaler.data_max_]
     
     elif scaling_method == "standard":
         scaler = StandardScaler()
-        scaler.fit(ori_data)
+        scaler.fit(X)
         params = [scaler.mean_, scaler.var_]
 
     # Imputation values
     if impute_method == "median":
-        impute_vals = ori_data.median()
+        impute_vals = X.median()
     elif impute_method == "mode":
-        impute_vals = stats.mode(ori_data).mode[0]
+        impute_vals = stats.mode(X).mode[0]
     else:
         raise ValueError("Imputation method should be `median` or `mode`")    
 
@@ -123,7 +125,7 @@ def data_preprocess(
     for i in tqdm(range(no)):
         # Extract the time-series data with a certain admissionid
 
-        curr_data = ori_data[ori_data[index] == uniq_id[i]].to_numpy()
+        curr_data = X[X[index] == uniq_id[i]].to_numpy()
 
         # Impute missing data
         curr_data = imputer(curr_data, impute_vals)
@@ -142,7 +144,15 @@ def data_preprocess(
             output[i, :curr_no, :] = curr_data[:, 1:]  # Shape: [1, max_seq_len, dim]
             time.append(curr_no)
 
-    return output, time, params, max_seq_len, padding_value
+    # Preprocess labels to one-hot encoding
+    if one_hot:
+        labels = np.zeros((len(Y), max(Y)))
+        for label in Y:
+            labels[label] == 1.
+    else:
+        labels = np.array(Y)
+
+    return output, time, labels, params, max_seq_len, padding_value
 
 def imputer(
     curr_data: np.ndarray, 
@@ -175,3 +185,6 @@ def imputer(
         raise ValueError("NaN values remain after imputation")
 
     return imputed_data.to_numpy()
+
+if __name__=="__main__":
+    data_preprocess("NER2015_BCI_train.jlb", max_seq_len=1000)

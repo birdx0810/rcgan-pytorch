@@ -3,12 +3,12 @@
 import argparse
 import logging
 import os
-import pickle
 import random
 import shutil
 import time
 
 # 3rd-Party Modules
+import joblib
 import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
@@ -43,14 +43,8 @@ def main(args):
     out_dir = os.path.abspath(f"./output/{args.exp}/")
     if not os.path.exists(out_dir):
         os.makedirs(out_dir, exist_ok=True)
-
-    # model directory
-    model_dir = os.path.join(out_dir, "model")
-    if os.path.exists(model_dir):
-        shutil.rmtree(model_dir)
-    os.makedirs(model_dir, exist_ok=True)
     
-    # TensorBoard directory
+    ## TensorBoard directory
     tensorboard_path = os.path.abspath("./tensorboard")
     if not os.path.exists(tensorboard_path):
         os.makedirs(model_dir, exist_ok=True)
@@ -58,7 +52,6 @@ def main(args):
     print(f"\nCode directory:\t\t\t{code_dir}")
     print(f"Data directory:\t\t\t{data_path}")
     print(f"Output directory:\t\t{out_dir}")
-    print(f"  └ Model output:\t\t{model_dir}")
     print(f"TensorBoard directory:\t\t{tensorboard_path}\n")
 
     ##############################################
@@ -85,7 +78,7 @@ def main(args):
     # Load and preprocess data for model
     #########################
 
-    data_path = "data/stock.csv"
+    data_path = "data/NER2015_BCI_train.jlb"
     X, T, _, args.max_seq_len, args.padding_value = data_preprocess(
         data_path, args.max_seq_len
     )
@@ -125,19 +118,15 @@ def main(args):
     # Save train and generated data for visualization
     #########################
     
-    # Save splitted data and generated data
-    with open(f"{model_dir}/train_data.pickle", "wb") as fb:
-        pickle.dump(train_data, fb)
-    with open(f"{model_dir}/train_time.pickle", "wb") as fb:
-        pickle.dump(train_time, fb)
-    with open(f"{model_dir}/test_data.pickle", "wb") as fb:
-        pickle.dump(test_data, fb)
-    with open(f"{model_dir}/test_time.pickle", "wb") as fb:
-        pickle.dump(test_time, fb)
-    with open(f"{model_dir}/fake_data.pickle", "wb") as fb:
-        pickle.dump(generated_data, fb)
-    with open(f"{model_dir}/fake_time.pickle", "wb") as fb:
-        pickle.dump(generated_time, fb)
+    joblib.dump(train_data, f"{hider_dir}/train_data.jlb")
+    joblib.dump(train_time, f"{hider_dir}/train_time.jlb")
+    joblib.dump(train_label, f"{hider_dir}/train_label.jlb")
+    joblib.dump(generated_data, f"{hider_dir}/generated_data.jlb")
+    joblib.dump(generated_time, f"{hider_dir}/generated_time.jlb")
+    joblib.dump(generated_label, f"{hider_dir}/generated_label.jlb")
+    joblib.dump(test_data, f"{hider_dir}/test_data.jlb")
+    joblib.dump(test_time, f"{hider_dir}/train_time.jlb")
+    joblib.dump(test_label, f"{hider_dir}/train_label.jlb")
 
     #########################
     # Preprocess data for seeker
@@ -240,7 +229,7 @@ if __name__ == "__main__":
     # Data Arguments
     parser.add_argument(
         '--max_seq_len',
-        default=100,
+        default=10000,
         type=int)
     parser.add_argument(
         '--train_rate',
