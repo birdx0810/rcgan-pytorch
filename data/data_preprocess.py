@@ -65,27 +65,40 @@ def data_preprocess(
     index = 0
 
     # Load serialized data (list of dict)
+    # Serialized data should be a list of dict with key value pairs as follows:
+    # {
+    #   "X": data,
+    #   "T": time,
+    #   "Y": labels
+    # }
+    # There would be no "Y" key if there are no labels in the dataset
+
     print("Loading data...\n")
-    ori_data = joblib(file_name)
+    ori_data = joblib.load(file_name)
 
     X = np.vstack([d["X"] for d in ori_data])
+    X = pd.DataFrame(X)
     T = [d["T"] for d in ori_data]
-    Y = [d["Y"] for d in ori_data]
+
+    # Check if dataset has labels
+    Y = None
+    if ori_data[0]["Y"]:
+        Y = [d["Y"] for d in ori_data]
 
     #########################
     # Remove outliers from dataset
     #########################
     
-    no = X.shape[0]
-    z_scores = stats.zscore(X, axis=0, nan_policy='omit')
-    z_filter = np.nanmax(np.abs(z_scores), axis=1) < 3
-    X = X[z_filter]
-    print(f"Dropped {no - X.shape[0]} rows (outliers)\n")
+    # no = X.shape[0]
+    # z_scores = stats.zscore(X, axis=0, nan_policy='omit')
+    # z_filter = np.nanmax(np.abs(z_scores), axis=1) < 3
+    # X = X[z_filter]
+    # print(f"Dropped {no - X.shape[0]} rows (outliers)\n")
 
     # Parameters
     uniq_id = np.unique(X[index])
     no = len(uniq_id)
-    dim = len(X.columns) - 1
+    dim = X.shape[-1] - 1   # Exclude index
 
     #########################
     # Impute, scale and pad data
@@ -119,7 +132,7 @@ def data_preprocess(
     # Output initialization
     output = np.empty([no, max_seq_len, dim])  # Shape:[no, max_seq_len, dim]
     output.fill(padding_value)
-    time = []
+    time = np.empty([no])
 
     # For each uniq id
     for i in tqdm(range(no)):
@@ -139,18 +152,21 @@ def data_preprocess(
         # Pad data to `max_seq_len`
         if curr_no >= max_seq_len:
             output[i, :, :] = curr_data[:max_seq_len, 1:]  # Shape: [1, max_seq_len, dim]
-            time.append(max_seq_len)
+            time[i] = max_seq_len
         else:
             output[i, :curr_no, :] = curr_data[:, 1:]  # Shape: [1, max_seq_len, dim]
-            time.append(curr_no)
+            time[i] = curr_no
 
     # Preprocess labels to one-hot encoding
-    if one_hot:
-        labels = np.zeros((len(Y), max(Y)))
-        for label in Y:
-            labels[label] == 1.
-    else:
-        labels = np.array(Y)
+    if Y:
+        if one_hot:
+            labels = np.zeros((len(Y), max(Y)))
+            for label in Y:
+                labels[label] == 1.
+        else:
+            labels = np.array(Y)
+
+        assert len(time) == len(output)
 
     return output, time, labels, params, max_seq_len, padding_value
 

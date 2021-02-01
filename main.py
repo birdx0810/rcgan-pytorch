@@ -16,7 +16,7 @@ from sklearn.model_selection import train_test_split
 # Self-Written Modules
 from data.data_preprocess import data_preprocess
 from metrics.metric_utils import (
-    feature_prediction, one_step_ahead_prediction, reidentify_score
+    one_step_ahead_prediction, classification_task, reidentify_score
 )
 
 from models.rcgan import RCGAN
@@ -79,7 +79,7 @@ def main(args):
     #########################
 
     data_path = "data/NER2015_BCI_train.jlb"
-    X, T, _, args.max_seq_len, args.padding_value = data_preprocess(
+    X, T, Y, _, args.max_seq_len, args.padding_value = data_preprocess(
         data_path, args.max_seq_len
     )
 
@@ -88,12 +88,28 @@ def main(args):
 
     args.feature_dim = X.shape[-1]
     args.Z_dim = X.shape[-1]
-    args.C_dim = None
+    args.C_dim = Y.shape[-1]
+
+    # Shuffle data sequence
+    idx = np.random.permutation(X.shape[0])
+    X, T, Y = X[idx], T[idx], Y[idx]
 
     # Train-Test Split data and time
-    train_data, test_data, train_time, test_time = train_test_split(
-        X, T, test_size=args.train_rate, random_state=args.seed
+    train_data, test_data = train_test_split(
+        X, test_size=args.train_rate, shuffle=False
     )
+    train_time, test_time = train_test_split(
+        T, test_size=args.train_rate, shuffle=False
+    )
+    train_label, test_label = train_test_split(
+        Y, test_size=args.train_rate, shuffle=False
+    )
+    
+    print(f"Train data: {train_data.shape} (Idx x MaxSeqLen x Features)\n")
+    print(f"Test data: {test_data.shape} (Idx x MaxSeqLen x Features)\n")
+
+    if train_data.shape[0] < args.batch_size:
+        raise ValueError("Batch size is larger than dataset")
 
     #########################
     # Initialize and Run model
@@ -104,9 +120,15 @@ def main(args):
 
     model = RCGAN(args)
     if args.is_train == True:
-        rcgan_trainer(model, train_data, train_time, args)
-    generated_data = rcgan_generator(model, train_time, args)
+        rcgan_trainer(
+            model=model, 
+            data=train_data, 
+            time=train_time, 
+            label=train_label,
+            args=args)
+    generated_data = rcgan_generator(model, train_time, train_label, args)
     generated_time = train_time
+    generated_label = train_label
 
     # Log end time
     end = time.time()
@@ -118,15 +140,15 @@ def main(args):
     # Save train and generated data for visualization
     #########################
     
-    joblib.dump(train_data, f"{hider_dir}/train_data.jlb")
-    joblib.dump(train_time, f"{hider_dir}/train_time.jlb")
-    joblib.dump(train_label, f"{hider_dir}/train_label.jlb")
-    joblib.dump(generated_data, f"{hider_dir}/generated_data.jlb")
-    joblib.dump(generated_time, f"{hider_dir}/generated_time.jlb")
-    joblib.dump(generated_label, f"{hider_dir}/generated_label.jlb")
-    joblib.dump(test_data, f"{hider_dir}/test_data.jlb")
-    joblib.dump(test_time, f"{hider_dir}/train_time.jlb")
-    joblib.dump(test_label, f"{hider_dir}/train_label.jlb")
+    joblib.dump(train_data, f"{out_dir}/train_data.jlb")
+    joblib.dump(train_time, f"{out_dir}/train_time.jlb")
+    joblib.dump(train_label, f"{out_dir}/train_label.jlb")
+    joblib.dump(generated_data, f"{out_dir}/generated_data.jlb")
+    joblib.dump(generated_time, f"{out_dir}/generated_time.jlb")
+    joblib.dump(generated_label, f"{out_dir}/generated_label.jlb")
+    joblib.dump(test_data, f"{out_dir}/test_data.jlb")
+    joblib.dump(test_time, f"{out_dir}/train_time.jlb")
+    joblib.dump(test_label, f"{out_dir}/train_label.jlb")
 
     #########################
     # Preprocess data for seeker
@@ -146,26 +168,23 @@ def main(args):
     # Evaluate the performance
     #########################
 
-    # 1. Feature prediction
-    feat_idx = np.random.permutation(train_data.shape[2])[:args.feat_pred_no]
-    print("Running feature prediction using original data...")
-    ori_feat_pred_perf = feature_prediction(
-        (train_data, train_time), 
-        (test_data, test_time),
-        feat_idx
+    # 1. Classification task
+    print("\nRunning classification task using original data...")
+    ori_classification_perf = classification_task(
+        (train_data, train_time, train_label),
+        (test_data, test_time, test_label)
     )
-    print("Running feature prediction using generated data...")
-    new_feat_pred_perf = feature_prediction(
-        (generated_data, generated_time),
-        (test_data, test_time),
-        feat_idx
+    print("Running classification task using generated data...")
+    new_classification_perf = classification_task(
+        (generated_data, generated_time, generated_label),
+        (test_data, test_time, test_label)
     )
 
-    feat_pred = [ori_feat_pred_perf, new_feat_pred_perf]
+    classification = [ori_classification_perf, new_classification_perf]
 
-    print('Feature prediction results:\n' +
-          f'(1) Ori: {str(np.round(ori_feat_pred_perf, 4))}\n' +
-          f'(2) New: {str(np.round(new_feat_pred_perf, 4))}\n')
+    print('Classification Task results:\n' +
+        f'(1) Ori: {str(np.round(ori_classification_perf, 4))}\n' +
+        f'(2) New: {str(np.round(new_classification_perf, 4))}')
 
     # 2. One step ahead prediction
     print("Running one step ahead prediction using original data...")
@@ -229,7 +248,7 @@ if __name__ == "__main__":
     # Data Arguments
     parser.add_argument(
         '--max_seq_len',
-        default=10000,
+        default=100,
         type=int)
     parser.add_argument(
         '--train_rate',
@@ -243,7 +262,7 @@ if __name__ == "__main__":
         type=int)
     parser.add_argument(
         '--batch_size',
-        default=128,
+        default=32,
         type=int)
     parser.add_argument(
         '--d_iters',

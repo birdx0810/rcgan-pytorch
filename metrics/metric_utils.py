@@ -5,7 +5,9 @@ import numpy as np
 from sklearn.metrics import accuracy_score, mean_squared_error
 
 from metrics.general_rnn import GeneralRNN
-from metrics.dataset import FeaturePredictionDataset, OneStepPredictionDataset
+from metrics.dataset import (
+    FeaturePredictionDataset, OneStepPredictionDataset, ClassificationDataset
+)
 
 def rmse_error(y_true, y_pred):
     """User defined root mean squared error.
@@ -241,4 +243,98 @@ def one_step_ahead_prediction(train_data, test_data):
 
             perf += rmse_error(test_y, test_p)
 
+    return perf
+
+def classification_task(train_data, test_data):
+    """Use the previous time-series to predict one-step ahead feature values.
+
+    Args:
+    - train_data: training time-series
+    - test_data: testing time-series
+
+    Returns:
+    - perf: average performance of one-step ahead predictions (in terms of AUC or MSE)
+    """
+    train_data, train_time, train_label = train_data
+    test_data, test_time, test_label = test_data
+
+    # Parameters
+    no, seq_len, dim = test_data.shape
+
+    # Set model parameters
+    args = {}
+    args["device"] = "cuda"
+    args["task"] = "classification"
+    args["model_type"] = "gru"
+    args["bidirectional"] = False
+    args["epochs"] = 20
+    args["batch_size"] = 128
+    args["in_dim"] = dim
+    args["h_dim"] = dim - 1
+    args["out_dim"] = 1
+    args["n_layers"] = 3
+    args["dropout"] = 0.5
+    args["padding_value"] = -1.0
+    args["max_seq_len"] = 100
+    args["learning_rate"] = 1e-3
+    args["grad_clip_norm"] = 5.0
+
+    # Set training features and labels
+    train_dataset = ClassificationDataset(train_data, train_time, train_label)
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=args["batch_size"],
+        shuffle=True
+    )
+
+    # Set testing features and labels
+    test_dataset = ClassificationDataset(test_data, test_time, test_label)
+    test_dataloader = torch.utils.data.DataLoader(
+        test_dataset,
+        batch_size=no,
+        shuffle=False
+    )
+
+    # Initialize model
+    model = GeneralRNN(args)
+    model.to(args["device"])
+    criterion = torch.nn.BCEWithLogitsLoss()
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=args["learning_rate"]
+    )
+
+    # Train the predictive model
+    logger = trange(args["epochs"], desc=f"Epoch: 0, Loss: 0")
+    for epoch in logger:
+        running_loss = 0.0
+
+        for train_x, train_t, train_y in train_dataloader:
+            train_x = train_x.to(args["device"])
+            train_y = train_y.to(args["device"])
+            # zero the parameter gradients
+            optimizer.zero_grad()
+            # forward
+            train_p = model(train_x, train_t).mean(axis=1)
+            loss = criterion(train_p, train_y)
+            # backward
+            loss.backward()
+            # optimize
+            optimizer.step()
+
+            running_loss += loss.item()/len(train_x)
+
+        logger.set_description(f"Epoch: {epoch}, Loss: {running_loss:.4f}")
+
+    # Evaluate the trained model
+    with torch.no_grad():
+
+        model.eval()
+        for test_x, test_t, test_y in test_dataloader:
+            test_x = test_x.to(args["device"])
+            test_p = model(test_x, test_t).cpu()
+            test_p = torch.sigmoid(test_p).mean(axis=1)
+            test_p = (1.0*(test_p.numpy() > 0.5))
+            test_y = test_y.numpy()
+            perf = accuracy_score(test_y, test_p)
     return perf

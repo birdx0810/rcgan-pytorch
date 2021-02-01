@@ -5,6 +5,7 @@ class Generator(torch.nn.Module):
     """
     def __init__(self, args):
         super(Generator, self).__init__()
+        self.device = args.device
         self.Z_dim = args.Z_dim
         self.C_dim = args.C_dim
         self.feature_dim = args.feature_dim
@@ -14,9 +15,9 @@ class Generator(torch.nn.Module):
 
         # Set input dim for model (w/ or w/o C)
         if self.C_dim:
-            self.input_dim = self.feature_dim + self.C_dim
+            self.input_dim = self.Z_dim + self.C_dim
         else:
-            self.input_dim = self.feature_dim
+            self.input_dim = self.Z_dim
 
         # Generator Architecture
         self.gen_rnn = torch.nn.LSTM(
@@ -58,13 +59,17 @@ class Generator(torch.nn.Module):
         Returns:
             - X_hat: feature space synthetic data (B x S x F)
         """
-        if C:
+        if C is not None:
             # Conditional parameters
             _, cond_dim = C.shape
 
             # Append conditional vector to noise vector
-            repeated_encoding = torch.stack([C]*self.max_seq_len, axis=1)
-            X = torch.cat([X, repeated_encoding], axis=2)
+            # (B x S x Z -> B x S x Z+C)
+            repeated_encoding = torch.stack(
+                [C]*self.max_seq_len, 
+                axis=1
+            ).to(self.device)
+            Z = torch.cat([Z, repeated_encoding], axis=2)
 
         # Dynamic RNN input for ignoring paddings
         Z_packed = torch.nn.utils.rnn.pack_padded_sequence(
@@ -75,15 +80,19 @@ class Generator(torch.nn.Module):
         )
         
         # 128 x 100 x 71
-        H_o, H_t = self.gen_rnn(Z_packed)
+        H_packed, H_t = self.gen_rnn(Z_packed)
         
         # Pad RNN output back to sequence length
         H_o, T = torch.nn.utils.rnn.pad_packed_sequence(
-            sequence=H_o, 
+            sequence=H_packed, 
             batch_first=True,
             padding_value=self.padding_value,
             total_length=self.max_seq_len
         )
+
+
+        # # 128 x 100 x 71
+        # H_o, H_t = self.gen_rnn(Z)
 
         # 128 x 100 x 71
         logits = self.gen_linear(H_o)
@@ -96,6 +105,7 @@ class Discriminator(torch.nn.Module):
     """
     def __init__(self, args):
         super(Discriminator, self).__init__()
+        self.device = args.device
         self.feature_dim = args.feature_dim
         self.C_dim = args.C_dim
         self.num_layers = args.num_layers
@@ -103,7 +113,7 @@ class Discriminator(torch.nn.Module):
         self.max_seq_len = args.max_seq_len
 
         # Set input dim for model (w/ or w/o C)
-        if self.C_dim:
+        if self.C_dim is not None:
             self.input_dim = self.feature_dim + self.C_dim
         else:
             self.input_dim = self.feature_dim
@@ -147,16 +157,20 @@ class Discriminator(torch.nn.Module):
         Returns:
             - logits: predicted logits (B x S)
         """
-        if C:
+        if C is not None:
             # Conditional parameters
             _, cond_dim = C.shape
 
             # Append conditional vector to noise vector
-            repeated_encoding = torch.stack([C]*self.max_seq_len, axis=1)
+            # (B x S x Z -> B x S x Z+C)
+            repeated_encoding = torch.stack(
+                [C]*self.max_seq_len, 
+                axis=1
+            ).to(self.device)
             X = torch.cat([X, repeated_encoding], axis=2)
 
         # Dynamic RNN input for ignoring paddings
-        H_packed = torch.nn.utils.rnn.pack_padded_sequence(
+        X_packed = torch.nn.utils.rnn.pack_padded_sequence(
             input=X, 
             lengths=T, 
             batch_first=True, 
@@ -164,16 +178,19 @@ class Discriminator(torch.nn.Module):
         )
         
         # 128 x 100 x 10
-        H_o, H_t = self.dis_rnn(H_packed)
+        H_packed, H_t = self.dis_rnn(X_packed)
         
         # Pad RNN output back to sequence length
         H_o, T = torch.nn.utils.rnn.pad_packed_sequence(
-            sequence=H_o, 
+            sequence=H_packed, 
             batch_first=True,
             padding_value=self.padding_value,
             total_length=self.max_seq_len
         )
 
+        # # 128 x 100 x 10
+        # H_o, H_t = self.dis_rnn(X)
+        
         # 128 x 100
         logits = self.dis_linear(H_o).squeeze(-1)
         return logits
@@ -204,6 +221,9 @@ class RCGAN(torch.nn.Module):
         - CS (torch.LongTensor): the conditional vector (wrong) for generated
                                  data (B x C) 
         """
+        if CG is None and CD is not None:
+            raise ValueError(f"")
+
         # Fake data
         X_hat = self.generator(Z, T, CG)
         D_fake = self.discriminator(X_hat, T, CG)

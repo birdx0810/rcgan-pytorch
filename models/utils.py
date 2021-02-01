@@ -37,15 +37,16 @@ def sample_C(batch_size=32, cond_dim=2, max_val=1, one_hot=False):
             C = np.random.choice(max_val+1, size=(batch_size, cond_dim))
         return C
 
-def rcgan_trainer(model, data, time, args):
+def rcgan_trainer(model, data, time, label, args):
     # Initialize TimeGAN dataset and dataloader
-    dataset = RCGANDataset(data, time)
+    dataset = RCGANDataset(data, time, label)
     dataloader = torch.utils.data.DataLoader(
         dataset=dataset,
         batch_size=args.batch_size,
         shuffle=False    
     )
 
+    # Move model to device
     model.to(args.device)
 
     # Initialize Optimizers
@@ -57,43 +58,68 @@ def rcgan_trainer(model, data, time, args):
 
     logger = trange(
         args.epochs, 
-        desc=f"Epoch: 0, E_loss: 0, G_loss: 0, D_loss: 0"
+        desc=f"Epoch: 0, G_loss: 0., D_loss: 0."
     )
     
     for epoch in logger:
-        for X_mb, T_mb in dataloader:
-            Z_mb = torch.rand((args.batch_size, args.max_seq_len, args.Z_dim))
+        for X_mb, T_mb, Y_mb in dataloader:
+            # Sample random noise
+            Z_mb = torch.rand(
+                (X_mb.size(0), args.max_seq_len, args.Z_dim)
+            ).to(args.device)
+            X_mb = X_mb.to(args.device)
+            Y_mb = Y_mb.to(args.device)
+
+            #########################
             # Discriminator forward pass
+            #########################
+            # TODO: Check if args.C_dim, must give C input
             for _ in range(args.d_iters):
                 model.zero_grad()
                 d_loss, _ = model(
                     X=X_mb,
                     Z=Z_mb,
                     T=T_mb,
-                    CG=None,
-                    CD=None,
+                    CG=Y_mb,
+                    CD=Y_mb,
                     CS=None
                 )
                 d_loss.backward()
                 d_opt.step()
+            
+            #########################
             # Generator forward pass
+            #########################
             for _ in range(args.g_iters):
                 model.zero_grad()
                 _, g_loss = model(
                     X=X_mb,
                     Z=Z_mb,
                     T=T_mb,
-                    CG=None,
-                    CD=None,
+                    CG=Y_mb,
+                    CD=Y_mb,
                     CS=None
                 )
                 g_loss.backward()
                 g_opt.step()
+        
+        logger.set_description(
+            f"Epoch: {epoch}, G: {g_loss:.4f}, D: {d_loss:.4f}"
+        )
 
-def rcgan_generator(model, time, args):
-    Z = torch.rand((len(time), args.max_seq_len, args.Z_dim))
+def rcgan_generator(model, time, labels, args):
+    # Move model to device
+    model.to(args.device)
+    model.eval()    
+    
+    Z = torch.rand(
+        (len(time), args.max_seq_len, args.Z_dim)
+    ).to(args.device)
+    
+    T = torch.LongTensor(time)
+    C = torch.FloatTensor(labels).to(args.device)
 
     with torch.no_grad():
-        X_hat = model.generate(Z=Z, T=time, C=None)
+        X_hat = model.generate(Z=Z, T=T, C=C).cpu().numpy()
 
     return X_hat

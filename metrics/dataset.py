@@ -39,3 +39,19 @@ class OneStepPredictionDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         return self.X[idx], self.T[idx], self.Y[idx]
+
+class ClassificationDataset(torch.utils.data.Dataset):
+    r"""The dataset for predicting ICU mortality.
+    Args:
+    - data (np.ndarray): the dataset to be trained on (B x S x F)
+    """
+    def __init__(self, data, time, label):
+        self.X = torch.FloatTensor(data)
+        self.T = torch.LongTensor(time)
+        self.Y = torch.FloatTensor(label)
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.T[idx], self.Y[idx]
