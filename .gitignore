@@ -131,6 +131,7 @@ dmypy.json
 # Self-written ignores
 tensorboard/
 data/*
+output/
 
 # Ignores to ignore
 !data/*.py

@@ -47,7 +47,7 @@ def main(args):
     ## TensorBoard directory
     tensorboard_path = os.path.abspath("./tensorboard")
     if not os.path.exists(tensorboard_path):
-        os.makedirs(model_dir, exist_ok=True)
+        os.makedirs(tensorboard_path, exist_ok=True)
 
     print(f"\nCode directory:\t\t\t{code_dir}")
     print(f"Data directory:\t\t\t{data_path}")
@@ -78,9 +78,9 @@ def main(args):
     # Load and preprocess data for model
     #########################
 
-    data_path = "data/NER2015_BCI_train.jlb"
-    X, T, Y, _, args.max_seq_len, args.padding_value = data_preprocess(
-        data_path, args.max_seq_len
+    data_path = "./data/physionet2012/phys2012.csv"
+    X, T, Y, _ = data_preprocess(
+        data_path, args
     )
 
     print(f"Processed data: {X.shape} (Idx x MaxSeqLen x Features)\n")
@@ -247,9 +247,18 @@ if __name__ == "__main__":
 
     # Data Arguments
     parser.add_argument(
+        '--data_name',
+        choices=['phys12', 'bci'],
+        default='phys12',
+        type=str)
+    parser.add_argument(
         '--max_seq_len',
         default=100,
         type=int)
+    parser.add_argument(
+        "--padding_value",
+        default=-1.0,
+        type=float)
     parser.add_argument(
         '--train_rate',
         default=0.5,
