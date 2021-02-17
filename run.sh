@@ -1,12 +1,12 @@
 #!/bin/bash
-train=true
+train=false
 export TZ="GMT-8"
 
 # Experiment variables
 exp="test"
 
 # Iteration variables
-epochs=250
+epochs=50
 
 python main.py \
 --device            cuda \

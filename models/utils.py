@@ -262,18 +262,18 @@ def rcgan_trainer(model, data, time, label, args):
     torch.save(model.state_dict(), f"{args.model_path}/model.pt")
     print(f"\nSaved at path: {args.model_path}\n")
 
-def rcgan_generator(model, T, labels, batch_size, model_path):
+def rcgan_generator(model, time, label, args):
     """Inference procedure for RCGAN
     """
     # Load model for inference
-    if not os.path.exists(model_path):
+    if not os.path.exists(args.model_path):
         raise ValueError(f"Model directory not found...")
 
     # Load arguments and model
-    with open(f"{model_path}/args.pickle", "rb") as fb:
+    with open(f"{args.model_path}/args.pickle", "rb") as fb:
         args = torch.load(fb)
 
-    model.load_state_dict(torch.load(f"{model_path}/model.pt"))
+    model.load_state_dict(torch.load(f"{args.model_path}/model.pt"))
 
     print("Generating Data...")
     generated_data = []
@@ -282,14 +282,14 @@ def rcgan_generator(model, T, labels, batch_size, model_path):
     model.to(args.device)
     model.eval()
     with torch.no_grad():
-        iters = (len(T) // batch_size + 1)
+        iters = (len(time) // args.batch_size + 1)
         for i in range(iters):
             # Sample random input
             T_mb = torch.LongTensor(
-                get_feat_batch(T, i, batch_size)
+                get_feat_batch(time, i, args.batch_size)
             )
             C_mb = torch.FloatTensor(
-                get_feat_batch(labels, i, batch_size)
+                get_feat_batch(label, i, args.batch_size)
             )
             Z_mb = torch.rand(
                 (T_mb.shape[-1], args.max_seq_len, args.Z_dim)
@@ -299,8 +299,8 @@ def rcgan_generator(model, T, labels, batch_size, model_path):
                 model.generate(Z=Z_mb, T=T_mb, C=C_mb).cpu().numpy()
             )
 
-    generated_data = np.vstack(generated_data)[:len(T)]
-    generated_labels = get_labels(generated_data, T)
-    generated_time = T
+    generated_data = np.vstack(generated_data)[:len(time)]
+    generated_label = get_labels(generated_data, time)
+    generated_time = time
 
-    return generated_data, generated_labels, generated_time
+    return generated_data, generated_label, generated_time

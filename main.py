@@ -40,7 +40,8 @@ def main(args):
     data_file_name = os.path.basename(data_path)
 
     ## Output directories
-    out_dir = os.path.abspath(f"./output/{args.exp}/")
+    args.model_path = f"./output/{args.exp}/"
+    out_dir = os.path.abspath(args.model_path)
     if not os.path.exists(out_dir):
         os.makedirs(out_dir, exist_ok=True)
     
@@ -126,10 +127,12 @@ def main(args):
             time=train_time, 
             label=train_label,
             args=args)
-    generated_data = rcgan_generator(model, train_time, train_label, args)
-    generated_time = train_time
-    generated_label = train_label
-
+    generated_data, generated_label, generated_time = rcgan_generator(
+        model=model, 
+        time=train_time, 
+        label=train_label, 
+        args=args)
+    
     # Log end time
     end = time.time()
 
