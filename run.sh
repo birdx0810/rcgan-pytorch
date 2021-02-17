@@ -1,5 +1,5 @@
 #!/bin/bash
-train=false
+train=true
 export TZ="GMT-8"
 
 # Experiment variables
