@@ -17,8 +17,7 @@ cat requirements.txt | xargs -n 1 pip install --upgrade
 ### Directory Hierarchy
 ```bash
 data/                         # the folder holding the datasets and preprocessing files
-  ├ data_preprocessing.py     # the data preprocessing functions
-  └ NER2015_BCI_train.jlb     # example EEG dataset derived from https://www.kaggle.com/c/inria-bci-challenge
+  └ data_preprocessing.py     # the data preprocessing functions
 metrics/                      # the folder holding the metric functions for evaluating the model
   ├ dataset.py                # the dataset class for feature predicting and one-step ahead predicting
   ├ general_rnn.py            # the model for fitting the dataset during TSTR evaluation
