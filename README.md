@@ -1,5 +1,9 @@
 # RCGAN_PyTorch
-This is a PyTorch implementation of Recurrent (Conditional) GAN (Esteban et al., 2017).
+This is a PyTorch implementation (kinda) of Recurrent (Conditional) GAN (Esteban et al., 2017). 
+
+> :warning: WARNING!!!
+> - This implementation is written for other purposes, not for experiments in the original paper.
+> - There are some known issues that I've haven't got time to resolve (see https://github.com/d9n13lt4n/rcgan-pytorch/issues/1#issuecomment-935364784).
 
 ## Getting Started
 ### Installing Requirements
