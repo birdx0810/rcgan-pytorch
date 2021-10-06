@@ -79,7 +79,7 @@ def main(args):
     # Load and preprocess data for model
     #########################
 
-    data_path = "./data/physionet2012/phys2012.csv"
+    data_path = "./data/stock.csv"
     X, T, Y, _ = data_preprocess(
         data_path, args
     )

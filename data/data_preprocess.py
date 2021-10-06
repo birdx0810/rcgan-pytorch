@@ -63,7 +63,7 @@ def data_preprocess(
     # Load data
     #########################
 
-    index = 'Index'
+    index = 'Idx'
     label = 'Label'
 
     # Load .csv file, columns are typically as follows:
